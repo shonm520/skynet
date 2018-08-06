@@ -471,6 +471,9 @@ new_fd(struct socket_server *ss, int id, int fd, int protocol, uintptr_t opaque,
 }
 
 // return -1 when connecting
+/*
+	lua调用socket.open(addr, ip)就会调用到这里，正常的话socket type变为SOCKET_TYPE_CONNECTED
+*/
 static int
 open_socket(struct socket_server *ss, struct request_open * request, struct socket_message *result) {
 	int id = request->id;
@@ -949,6 +952,13 @@ bind_socket(struct socket_server *ss, struct request_bind *request, struct socke
 	return SOCKET_OPEN;
 }
 
+/*
+	这里的start socket是指调用lua端调用listen，或者有客户端来连接之后，紧接着lua调用socket.start(id)
+	如果是前者，那么此时socket type为SOCKET_TYPE_PLISTEN,调用start之后变为SOCKET_TYPE_LISTEN，
+	这个是针对监听socket而言的，并且开始把监听socket纳入epoll的监管中
+	是后者socket type为SOCKET_TYPE_PACCEPT，调用start之后变为SOCKET_TYPE_CONNECTED，
+	这个是针对连接socket而言的，并且开始把连接socket纳入epoll的监管中
+*/
 static int
 start_socket(struct socket_server *ss, struct request_start *request, struct socket_message *result) {
 	int id = request->id;
@@ -1361,6 +1371,10 @@ clear_closed_event(struct socket_server *ss, struct socket_message * result, int
 	}
 }
 
+
+/*
+	这里是所有网络消息的入口
+*/
 // return type
 int 
 socket_server_poll(struct socket_server *ss, struct socket_message * result, int * more) {
@@ -1403,7 +1417,7 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 		switch (s->type) {
 		case SOCKET_TYPE_CONNECTING:
 			return report_connect(ss, s, &l, result);
-		case SOCKET_TYPE_LISTEN: {
+		case SOCKET_TYPE_LISTEN: {                     //有客户端连接消息
 			int ok = report_accept(ss, s, result);
 			if (ok > 0) {
 				return SOCKET_ACCEPT;
@@ -1416,11 +1430,11 @@ socket_server_poll(struct socket_server *ss, struct socket_message * result, int
 		case SOCKET_TYPE_INVALID:
 			fprintf(stderr, "socket-server: invalid socket\n");
 			break;
-		default:
+		default:                        //一般是读，写，错误消息
 			if (e->read) {
 				int type;
-				if (s->protocol == PROTOCOL_TCP) {
-					type = forward_message_tcp(ss, s, &l, result);
+				if (s->protocol == PROTOCOL_TCP) {                    //有tcp协议的数据触发
+					type = forward_message_tcp(ss, s, &l, result);    
 				} else {
 					type = forward_message_udp(ss, s, &l, result);
 					if (type == SOCKET_UDP) {

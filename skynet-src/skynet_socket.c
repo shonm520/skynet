@@ -34,7 +34,7 @@ static void
 forward_message(int type, bool padding, struct socket_message * result) {
 	struct skynet_socket_message *sm;
 	size_t sz = sizeof(*sm);
-	if (padding) {
+	if (padding) {     //应该是消息没有数据，需要填充的意思
 		if (result->data) {
 			size_t msg_sz = strlen(result->data);
 			if (msg_sz > 128) {
@@ -70,6 +70,12 @@ forward_message(int type, bool padding, struct socket_message * result) {
 	}
 }
 
+
+/*
+	将socket的消息push到消息队列中
+	这里的socket消息指被动的socket消息，例如数据消息，错误，关闭等消息。比较重要的是
+	lua调用socket.start得到的open消息。这些消息都是被动的。调用bind,listen不会得到消息，因为他们是主动的
+*/
 int 
 skynet_socket_poll() {
 	struct socket_server *ss = SOCKET_SERVER;
